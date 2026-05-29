@@ -1,0 +1,21 @@
+# Claude Code 工作目录
+.claude/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 编译产物
+*.o
+*.exe
+Makefile
+
+# 超过 GitHub 限制的大文件
+智慧监控与数据采集项目演示.mp4
+智慧监控与数据采集项目汇报PPT.pptx
+
+# 二进制大文件（系统镜像，刷机用）
+可执行程序和系统/install/rootfs.tar.gz
+可执行程序和系统/install/ramdisk
+可执行程序和系统/install/ramdisk.gz
+可执行程序和系统/install/uImage
