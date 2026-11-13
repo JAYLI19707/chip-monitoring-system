@@ -286,7 +286,7 @@ The project was developed as part of a collaborative embedded systems engineerin
 ## 11. Project Links
 
 - **Repository:** <https://github.com/JAYLI19707/chip-monitoring-system>
-- **Technical Documentation:** [TUTORIAL.md](TUTORIAL.md)
+- **Technical Documentation:** [TUTORIAL.en.md](TUTORIAL.en.md)
 - **Demo video:** The project archive contains the demonstration video referenced by the original documentation.
 
 ## 12. License
