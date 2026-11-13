@@ -3,232 +3,296 @@
   <strong>English</strong>
 </p>
 
-# Smart Monitoring and Data Acquisition System
+# Loongson 2K300 Embedded Environmental Monitoring System
 
-## 1. Overview
+**A hardware-software integrated monitoring and data acquisition system built on the Loongson 2K300 platform and OpenHarmony.**
 
-This project uses the DHT11 sensor on a Pi HAT board to collect ambient temperature and humidity. Thresholds can be configured in the software. When a threshold is exceeded, the buzzer sounds and the corresponding LED indicates the status.
+This project demonstrates embedded Linux development, sensor integration, Qt5 graphical interface design, local data persistence, and hardware-level alert control. It was developed as part of a team project for the OpenAtom Open Source Competition and received a **National Second Prize in 2025**.
 
-During development, it was necessary to replace the kernel and disable parts of the file system, so the kernel and file system were rebuilt. See the `install` folder under `可执行程序和系统` for details.
+## 1. Project Overview
 
-Software screenshot:
+The system monitors environmental temperature and humidity using a DHT11 sensor connected through a Pi HAT expansion board. It provides real-time data visualization, configurable warning thresholds, LED and buzzer alerts, and persistent storage of sensor readings.
 
-![](pictures/软件运行效果参考图.png)
+The project combines platform-level configuration with application development:
 
-## 2. Design
+- Qt5/C++ manages the user interface, charts, timers, threshold evaluation, and database operations.
+- Python scripts launched through Qt `QProcess` read the sensor and control the GPIO devices.
+- SQLite3 stores measurements, thresholds, and alert states locally.
+- The Linux framebuffer and tslib provide display and touchscreen support on the target device.
 
-The status behavior is:
+### Key Features
 
-- When neither value exceeds its threshold, the green LED is on and the buzzer is off.
-- When humidity exceeds its threshold, the red LED is on and the buzzer sounds.
-- When temperature exceeds its threshold, the yellow LED is on and the buzzer sounds.
-- Thresholds can be configured in the software and saved to a file. Collected data is stored in an SQLite database.
+- **Environmental monitoring:** Reads temperature and humidity from a DHT11 approximately once per second.
+- **Real-time visualization:** Displays current readings and time-series charts using Qt Charts.
+- **Configurable alerts:** Allows users to update temperature and humidity warning thresholds.
+- **Hardware notifications:** Controls green, red, and yellow LEDs and a buzzer according to the current status.
+- **Local data persistence:** Stores valid readings and warning information in an SQLite3 database.
+- **Touchscreen interaction:** Uses Qt framebuffer output with tslib-based touchscreen input.
+- **Embedded platform adaptation:** Includes OpenHarmony configuration and device-tree changes for Pi HAT compatibility.
 
-Implementation:
+## 2. Technology Stack
 
-1. Qt5 is used for the user interface, while Python 3 controls the peripherals.
-2. Python 3 uses an RPi.GPIO library compatible with 2K300 to control the DHT11 sensor, LEDs, and buzzer.
-3. SQLite is used to store collected data.
+| Component | Technology |
+|---|---|
+| Hardware platform | Loongson 2K300 with Pi HAT |
+| Operating system | OpenHarmony with Linux kernel 5.10 |
+| Main programming languages | C++, C, Python 3 |
+| Graphical interface | Qt5, Qt Charts, Qt Virtual Keyboard |
+| Sensor | DHT11 |
+| Hardware control | RPi.GPIO-compatible library |
+| Data storage | SQLite3 |
+| Process integration | Qt `QProcess` |
+| Timed updates | Qt `QTimer` |
+| Display and input | Linux framebuffer, tslib |
+| Build system | qmake and GNU make |
 
-Because the interface uses Qt5, the original OH interface and touch mechanisms are not compatible with Qt display and input handling. The OH system must therefore be rebuilt first.
+## 3. System Architecture
 
-The Pi HAT configuration must also be selected in the kernel DTS. In this project, the patch for the replaced DTS was appended to `kernel/linux/patches/linux-5.10/ls2k300_vanguard_pi_patch/ls2k300_vanguard_pi_small.patch`, producing a kernel compatible with the Pi HAT.
+The system consists of four interconnected layers:
 
-After rebuilding the system, the compiled Qt5 and Python 3 libraries were added. The Qt5 cross-compilation tools were obtained from the materials provided by the organizer.
+**Hardware Layer:** The Loongson 2K300 board interfaces with a DHT11 temperature and humidity sensor, three LEDs, a buzzer, and a touchscreen.
 
-### 2.1. Kernel DTS configuration for the Pi HAT
+**Platform Layer:** A customized OpenHarmony/Linux environment provides GPIO access, framebuffer output, touchscreen input, and application runtime support.
 
-After a build, `ls2k300_pai_pihat.dts` and `ls2k300_pai.dts` can be found under:
+**Application Layer:** A Qt5/C++ application manages sensor readings, graphical updates, threshold configuration, status evaluation, and database writes.
 
-`out/ls2k300_vanguard_pi/ls2k300_vanguard_pi_linux/kernel/linux-5.10/arch/loongarch/boot/dts/loongson`
+**Storage Layer:** An SQLite3 database records measurements and their associated warning states.
 
-The build uses `ls2k300_pai.dts`. Create a temporary Git repository in `out/ls2k300_vanguard_pi/ls2k300_vanguard_pi_linux/kernel/linux-5.10`, copy `ls2k300_pai_pihat.dts` to `ls2k300_pai.dts`, generate the resulting Git patch, and append it to the patch mentioned above.
+### Data Flow
 
-### 2.2. Disable the OH display mechanism
-
-Modify `vendor/loongson/ls2k300_vanguard_pi_linux/config.json`:
-
-- Remove the `graphic`, `window`, and `applications` subsystems.
-- Set `enable_screensaver` to `false`.
-- Remove the `drivers_peripheral_display` component under `hdf`.
-
-### 2.3. Disable the OH touch mechanism
-
-Modify the kernel configuration:
-
-- Disable `CONFIG_DRIVERS_HDF_INPUT`.
-- Enable `CONFIG_TOUCHSCREEN_GOODIX`.
-
-Steps:
-
-- In `out/ls2k300_vanguard_pi/ls2k300_vanguard_pi_linux/kernel/linux-5.10`, run `make ls2k300_vanguard_pi_small_defconfig` after running `source set_env.sh`.
-- Run `make menuconfig` and apply the configuration above.
-- Run `make savedefconfig`.
-- Replace `kernel/linux/config/linux-5.10/arch/loongarch/configs/ls2k300_vanguard_pi_small_defconfig` with the generated `defconfig`.
-
-### 2.4. Software implementation
-
-Configure the provided Qt5 cross-compilation tools in Qt Creator, then implement the software. The main functions are:
-
-- Read temperature and humidity from the DHT11 sensor.
-- Control the LEDs and buzzer.
-- Draw temperature and humidity line charts.
-- Write each reading and its timestamp to an SQLite database.
-
-#### 2.4.1. Reading the DHT11
-
-The provided Python 3.9 library contains an RPi.GPIO library that can read the DHT11:
-
-```python
-from RPi.GPIO import DHT_sensor
-
-# Sensor types: DHT11, DHT22, and AM2302
-sensor = DHT_sensor.DHT11
-# The GPIO number connected to the DHT11 on the ls2k300 Pi is 61
-pin = 61
-while True:
-    result, humidity, temperature = DHT_sensor.read_retry(sensor, pin)
-    if result == 0:
-        print('humidity={0:0.0f} temperature={1:0.0f}'.format(humidity, temperature))
-        break
+```text
+             DHT11 Sensor
+                  |
+                  v
+         Python GPIO Script
+                  |
+                  v
+         Qt5 / C++ Application
+                  |
+         +--------+--------+
+         |        |        |
+         v        v        v
+    Real-time   SQLite3   Threshold
+      Charts    Database   Evaluation
+                            |
+                            v
+                       Python GPIO
+                            |
+                            v
+                       LEDs / Buzzer
 ```
 
-The software invokes this script and extracts the temperature and humidity from its output.
+The application launches the Python sensor script with `QProcess`, parses output in the form `humidity=52 temperature=26`, updates the interface, evaluates thresholds, writes valid readings to SQLite, and launches the hardware-control script with the resulting status code.
 
-#### 2.4.2. Controlling LEDs and the buzzer
+## 4. Implementation Details
 
-The RPi.GPIO library is also used to control the LEDs and buzzer:
+### 4.1 Embedded Platform Configuration
 
-```python
-from RPi.GPIO import LED
-from RPi.GPIO import Buzzer
-import time
-import sys
+The original embedded display and input mechanisms were not directly compatible with the Qt5 application. The target system therefore required:
 
-def main():
-    if len(sys.argv) < 2:
-        return
+- Pi HAT-compatible device-tree configuration.
+- Changes to the OpenHarmony display and input configuration.
+- `CONFIG_DRIVERS_HDF_INPUT` disabled.
+- `CONFIG_TOUCHSCREEN_GOODIX` enabled.
+- Qt5 and Python 3 runtime libraries included in the rebuilt system.
 
-    led_r = LED(88)
-    led_y = LED(72)
-    led_g = LED(73)
-    beep = Buzzer(75, active_high=False)
+The Linux framebuffer is used for graphical output, while `QT_QPA_FB_TSLIB=1` enables tslib-based touchscreen input.
 
-    if sys.argv[1] == '0':
-        led_g.on()
-        led_r.off()
-        led_y.off()
-        beep.off()
-    elif sys.argv[1] == '1':
-        led_g.off()
-        led_r.on()
-        led_y.off()
-        beep.on()
-    elif sys.argv[1] == '2':
-        led_g.off()
-        led_r.off()
-        led_y.on()
-        beep.on()
-    elif sys.argv[1] == '3':
-        led_g.off()
-        led_r.on()
-        led_y.on()
-        beep.on()
-    elif sys.argv[1] == '4':
-        led_g.off()
-        led_r.off()
-        led_y.off()
-        beep.off()
+For the detailed kernel, device-tree, and OpenHarmony configuration procedure, see [TUTORIAL.md](TUTORIAL.md).
 
-    time.sleep(0.1)
+### 4.2 Sensor Data Acquisition
 
-if __name__ == "__main__":
-    main()
+The DHT11 is read by a Python script using an RPi.GPIO-compatible library. The Qt application:
+
+1. Locates the script in `/opt/supervision_system_demo/` or the current working directory.
+2. Starts `python3` through `QProcess`.
+3. Waits for the process to finish and reads standard output.
+4. Parses the `humidity=... temperature=...` result.
+5. Updates the labels and charts when the result is valid.
+
+The acquisition timer runs every 1,000 ms. The chart keeps at most five points to avoid unbounded growth and unnecessary redraw overhead.
+
+### 4.3 Real-Time Visualization
+
+The interface uses Qt Charts with:
+
+- `QLineSeries` for temperature and humidity data.
+- `QDateTimeAxis` for the time axis.
+- `QValueAxis` for sensor values.
+- A five-point sliding window for recent readings.
+
+Temperature and humidity are displayed in separate charts with their own sensor ranges.
+
+### 4.4 Threshold-Based Alert System
+
+Users can update the warning thresholds through the interface. Input validation limits humidity to `0-90%` and temperature to `0-50°C`.
+
+| Status | Condition | LED Indicator | Buzzer |
+|---:|---|---|---|
+| `0` | Temperature and humidity are within limits | Green | Off |
+| `1` | Humidity exceeds its threshold | Red | On |
+| `2` | Temperature exceeds its threshold | Yellow | On |
+| `3` | Both exceed their thresholds | Red and yellow | On |
+| `4` | Application is exiting | All off | Off |
+
+The C++ application sends the status code to the Python hardware-control script, which updates the GPIO devices.
+
+### 4.5 Configuration Persistence
+
+Thresholds are stored in the `humidity_temperature_warning_data` file using this format:
+
+```text
+humidity=20 temperature=40
 ```
 
-The script accepts a value from 0 to 4:
+The default thresholds are 20% humidity and 40°C temperature. The application uses an exclusive file lock when reading or writing this file. A 200 ms timer checks for updated values so changes made by the interface can be reflected in the running application.
 
-- `0`: Neither threshold is exceeded.
-- `1`: Humidity exceeds its threshold.
-- `2`: Temperature exceeds its threshold.
-- `3`: Both thresholds are exceeded.
-- `4`: The software is exiting; turn off all LEDs and the buzzer.
+### 4.6 SQLite Data Storage
 
-#### 2.4.3. Temperature and humidity charts
+At startup, the application opens or creates `ss_sample_value.db` and ensures that the `ht_data` table exists:
 
-Use the QChart component.
+```sql
+CREATE TABLE IF NOT EXISTS ht_data (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    humidity INTEGER,
+    temperature INTEGER,
+    humidity_warning INTEGER,
+    temperature_warning INTEGER,
+    status INTEGER
+);
+```
 
-#### 2.4.4. SQLite database
+Each valid sensor reading is inserted with the thresholds and status used for that reading. The database is local, so the system does not require network connectivity for historical recordkeeping.
 
-When the software starts, it checks whether `ss_sample_value.db` exists in the working directory. If not, it creates the database and opens it.
+## 5. Engineering Challenges
 
-The database contains a table named `ht_data`:
+### 5.1 Hardware-Software Compatibility
 
-| Field | Description |
-| - | - |
-| `humidity` | Current humidity reading |
-| `temperature` | Current temperature reading |
-| `humidity_warning` | Humidity threshold |
-| `temperature_warning` | Temperature threshold |
-| `status` | Current status (`0`, `1`, `2`, or `3`) |
+**Challenge:** The default embedded environment was not directly compatible with the Pi HAT configuration and Qt5 touchscreen application.
 
-After each reading, a new row is inserted.
+**Approach:** Adapt the kernel device tree, modify OpenHarmony display and input settings, and rebuild the target system with the required Qt5 and Python libraries.
 
-## 3. Deployment
+### 5.2 Coordination Between Components
 
-`supervision_system_demo_oh.tar.gz` in the `可执行程序和系统` folder is the deployment package.
+**Challenge:** Sensor acquisition, chart updates, database writes, and hardware alerts had to operate together without blocking the user interface.
 
-First flash a usable system using the flashing package in the `install` folder.
+**Approach:** Keep GPIO operations in Python scripts, coordinate them through `QProcess`, use timer-driven updates, and limit the number of chart points.
 
-The extracted `supervision_system_demo_oh.tar.gz` contains:
+### 5.3 Persistent Configuration and Concurrent Access
+
+**Challenge:** Thresholds must survive application restarts while the interface and polling timer may access the same file.
+
+**Approach:** Store thresholds in a local file and protect reads and writes with file locking.
+
+## 6. Repository Structure
+
+```text
+chip-monitoring-system/
+├── common/
+│   ├── sqlite_op/
+│   │   ├── sqlite_op.c
+│   │   └── sqlite_op.h
+│   └── tool/
+│       └── tool.h
+├── pictures/                       # Screenshots
+├── main.cpp                        # Application entry point
+├── mainwindow.cpp                  # Sensor and alert logic
+├── mainwindow.h                    # Main window declarations
+├── mainwindow_init.cpp             # UI, chart, and database initialization
+├── mainwindow.ui                   # Qt Designer interface
+├── software_env.h                  # Paths, limits, and status constants
+├── supervision_system_demo.pro    # Qt/qmake project configuration
+├── TUTORIAL.md                     # Detailed implementation tutorial
+├── README.md                       # Chinese documentation
+├── README.en.md                    # English documentation
+└── 可执行程序和系统/
+    ├── install/                    # System installation materials
+    └── supervision_system_demo_oh.tar.gz
+```
+
+The Python deployment scripts and compiled executable are distributed inside `supervision_system_demo_oh.tar.gz`; they are not separate source files in the repository tree.
+
+## 7. Build and Deployment
+
+### 7.1 Build the Qt Application
+
+The project requires a Qt5 development environment with Qt Charts, Qt Virtual Keyboard, SQLite3 development files, qmake, and GNU make.
+
+```bash
+qmake supervision_system_demo.pro
+make
+```
+
+For the target board, use the compatible Qt5 cross-compilation toolchain supplied for the Loongson 2K300 environment.
+
+### 7.2 Deploy to the Target Device
+
+The deployment archive contains:
 
 | File | Purpose |
-| - | - |
+|---|---|
 | `python_dht11_read.py` | Reads the DHT11 |
 | `python_status_setup.py` | Controls the LEDs and buzzer |
-| `run.sh` | Starts the application and declares Qt environment variables |
-| `supervision_system_demo` | Main application |
+| `run.sh` | Configures the Qt input environment and starts the application |
+| `supervision_system_demo` | Compiled application |
 
-The contents of `run.sh` are:
+First flash a compatible system image using the materials in the `install` directory. Then extract the deployment archive on the target device and run:
 
-```shell
-#! /bin/sh
-
+```bash
 export QT_QPA_FB_TSLIB=1
 ./supervision_system_demo
 ```
 
-This declares tslib as Qt's input processing library, enabling touch input. Run `run.sh` to start the application.
+The application looks for the Python scripts and data files in `/opt/supervision_system_demo/` first, then in its current working directory.
 
-### 3.1. Application screenshot
+**Note:** This project targets specialized embedded hardware. It does not run directly on a standard desktop without adapting the GPIO, display, touchscreen, and deployment components.
 
-![](pictures/运行图.jpg)
+## 8. Screenshots
 
-### 3.2. Values below thresholds
+### Application Interface
 
-![](pictures/运行图-温湿度不超过阈值.jpg)
+![Monitoring Interface](pictures/软件运行效果参考图.png)
 
-### 3.3. Humidity above threshold
+### Normal Monitoring State
 
-![](pictures/运行图-湿度超过阈值.jpg)
+![Normal State](pictures/运行图-温湿度不超过阈值.jpg)
 
-### 3.4. Temperature above threshold
+### Humidity Warning
 
-![](pictures/运行图-温度超过阈值.jpg)
+![Humidity Warning](pictures/运行图-湿度超过阈值.jpg)
 
-### 3.5. Both values above thresholds
+### Temperature Warning
 
-![](pictures/运行图-温湿度超过阈值.jpg)
+![Temperature Warning](pictures/运行图-温度超过阈值.jpg)
 
-## 4. License
+### Simultaneous Warning
+
+![Both Warnings](pictures/运行图-温湿度超过阈值.jpg)
+
+## 9. Applications
+
+Potential application scenarios include:
+
+- Environmental monitoring inside industrial equipment.
+- Temperature and humidity monitoring in agricultural greenhouses.
+- Standalone monitoring installations that require local data storage and physical alerts.
+
+## 10. Project Recognition
+
+**OpenAtom Open Source Competition - National Second Prize (2025)**
+
+The project was developed as part of a collaborative embedded systems engineering effort.
+
+## 11. Project Links
+
+- **Repository:** <https://github.com/JAYLI19707/chip-monitoring-system>
+- **Technical Documentation:** [TUTORIAL.md](TUTORIAL.md)
+- **Demo video:** The project archive contains the demonstration video referenced by the original documentation.
+
+## 12. License
 
 MIT License
 
-## 5. Demo video
+---
 
-See `智慧监控与数据采集项目演示.mp4`.
-
-## 6. Applications
-
-- Environmental temperature and humidity monitoring and alarms, such as monitoring the inside of a machine and reporting potential risks when thresholds are exceeded.
-- Temperature and humidity monitoring in greenhouses. Historical readings can be queried from the database to help investigate problems.
+*Developed for educational, research, and embedded systems engineering purposes.*
