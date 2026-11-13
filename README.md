@@ -1,3 +1,8 @@
+<p align="center">
+  <strong>简体中文</strong> |
+  <a href="README.en.md">English</a>
+</p>
+
 # 智慧监控与数据采集项目
 
 ## 1. 项目概述
